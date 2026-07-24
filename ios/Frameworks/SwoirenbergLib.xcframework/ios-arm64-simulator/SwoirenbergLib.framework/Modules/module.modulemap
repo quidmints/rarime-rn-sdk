@@ -1,0 +1,5 @@
+framework module SwoirenbergLib {
+    umbrella header "SwoirenbergLib.h"
+    export *
+    module * { export * }
+}

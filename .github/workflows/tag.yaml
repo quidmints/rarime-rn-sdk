@@ -1,0 +1,31 @@
+name: Publish to NPM
+
+on:
+  push:
+    tags:
+      - 'v?[0-9]+.[0-9]+.[0-9]+'
+      - 'v?[0-9]+.[0-9]+.[0-9]+-[0-9]+'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nodejs: [ 18 ]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.nodejs }}
+      - name: Setup PNPM
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+      - name: Build package
+        run: pnpm build
+      - name: Publish package
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_AUTH_TOKEN}" > .npmrc
+          pnpm publish --access public --no-git-checks
+        env:
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}

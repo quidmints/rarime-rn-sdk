@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["RnNoirModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.rnnoir.RnNoirModule"]
+  }
+}

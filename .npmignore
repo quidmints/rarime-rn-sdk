@@ -1,0 +1,4 @@
+tsconfig.json
+example/
+tsconfig.base,json
+.eslintrc.json

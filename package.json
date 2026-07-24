@@ -1,0 +1,77 @@
+{
+  "name": "@rarimo/rarime-rn-sdk",
+  "version": "0.3.1",
+  "description": "Rarime SDK for integrating React Native applications with Rarimo protocols and services.",
+  "keywords": [
+    "react-native",
+    "expo",
+    "@rarimo/rarime-rn-sdk",
+    "RarimoSDK",
+    "RarimeSDK"
+  ],
+  "homepage": "https://github.com/rarimo/rarime-rn-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/rarimo/rarime-rn-sdk/issues"
+  },
+  "repository": "https://github.com/rarimo/rarime-rn-sdk",
+  "license": "MIT",
+  "author": "Bogdan-Guba <guba.bogd@gmail.com> (https://github.com/Bogdan-Guba)",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "scripts": {
+    "build": "expo-module build",
+    "clean": "expo-module clean",
+    "expo-module": "expo-module",
+    "generate:ethers-types": "typechain --target=ethers-v6 'abis/**/*.json' --out-dir src/types/contracts",
+    "lint": "expo-module lint",
+    "open:android": "open -a \"Android Studio\" example/android",
+    "open:ios": "xed example/ios",
+    "prepare": "expo-module prepare",
+    "test": "expo-module test"
+  },
+  "dependencies": {
+    "@dev-plugins/react-query": "^0.2.0",
+    "@distributedlab/tools": "^1.0.0-rc.17",
+    "@iden3/js-crypto": "^1.3.1",
+    "@li0ard/tsemrtd": "^0.3.4",
+    "@noble/curves": "^1.9.2",
+    "@noble/hashes": "^1.8.0",
+    "@peculiar/asn1-cms": "^2.3.15",
+    "@peculiar/asn1-ecc": "^2.3.15",
+    "@peculiar/asn1-rsa": "^2.3.15",
+    "@peculiar/asn1-schema": "^2.3.15",
+    "@peculiar/asn1-x509": "^2.3.15",
+    "@peculiar/x509": "^1.12.4",
+    "@solarity/zkit": "^0.3.7",
+    "@typechain/ethers-v6": "^0.5.1",
+    "@types/react": "~19.1.0",
+    "asn1js": "^3.0.6",
+    "axios": "^1.7.2",
+    "ethers": "^6.13.2",
+    "expo": "^54.0.24",
+    "expo-asset": "~11.0.1",
+    "expo-file-system": "~18.0.4",
+    "expo-module-scripts": "^5.0.7",
+    "expo-modules-core": "^3.0.26",
+    "mrz": "^4.2.0",
+    "node-forge": "^1.3.1",
+    "react-native": "0.81.5",
+    "superjson": "^2.2.2",
+    "typechain": "^8.3.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "expo": "^54.0.24",
+    "expo-module-scripts": "^5.0.7",
+    "react-native": "0.81.5",
+    "typechain": "^8.3.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.23.0"
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  },
+  "packageManager": "pnpm@8.10.0"
+}
