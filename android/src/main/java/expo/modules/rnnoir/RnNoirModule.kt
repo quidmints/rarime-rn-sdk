@@ -46,5 +46,44 @@ class RnNoirModule : Module() {
 
       return@AsyncFunction proof.proof
     }
+
+    /**
+     * Generates an UltraHonk proof using the Noir circuit.
+     *
+     * Added 2026-07-25: the underlying `Circuit.prove` binding already accepts "honk" as a
+     * `proofType` value (confirmed directly in the vendored native module's compiled bytecode -
+     * `strings` on Circuit.class's constant pool shows "honk" alongside "prove"/"proofType"/
+     * "recursive" - not assumed from documentation). No native rebuild or dependency bump was
+     * needed for this; `provePlonk` above and this function call the exact same already-vendored
+     * `noir.aar`, just with a different `proofType` argument. This is what
+     * ibiza/frontend/identity-wallet's `withdraw_identity`/`title_holder` circuits (Noir/Honk,
+     * not Plonk) need to actually generate proofs on-device.
+     *
+     * @param trustedSetupUri URI pointing to the SRS file (e.g. file://...)
+     * @param inputsJson JSON string representing a map of witness values
+     * @param manifestJson JSON manifest for the circuit bytecode
+     * @return A hex string representing the generated proof
+     * @throws IllegalArgumentException if the URI is invalid
+     * @throws Exception if proof generation fails
+     */
+    AsyncFunction("proveHonk") { trustedSetupUri: String, inputsJson: String, manifestJson: String ->
+      val rawPath = trustedSetupUri.toUri().path
+        ?: throw IllegalArgumentException("Invalid URI: $trustedSetupUri")
+
+      val circuit = Circuit.fromJsonManifest(manifestJson).apply {
+        setupSrs(rawPath, false)
+      }
+
+      val type = object : TypeToken<Map<String, Any>>() {}.type
+      val inputsMap: Map<String, Any> = Gson().fromJson(inputsJson, type)
+
+      val proof = circuit.prove(
+        inputsMap,
+        proofType = "honk",
+        recursive = false
+      )
+
+      return@AsyncFunction proof.proof
+    }
   }
 }

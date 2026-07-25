@@ -7,6 +7,12 @@ export type NoirZKProof = {
 };
 
 export class NoirCircuitParams {
+    // Shared by both provePlonk and proveHonk (proveHonk calls the same getTrustedSetupUri()
+    // below) - Barretenberg's structured reference string is a universal, curve-level KZG setup
+    // shared across its proof systems, not Plonk-specific, so this should be correct for Honk
+    // too. Not empirically confirmed (no device/simulator available to test proving this
+    // session) - if Honk proving fails against this file, a separate Honk-specific SRS download
+    // is the first thing to check.
     public static readonly TrustedSetupFileName = `${FileSystem.documentDirectory}/noir/ultraPlonkTrustedSetup.dat`;
 
     constructor(
@@ -180,6 +186,41 @@ export class NoirCircuitParams {
             pub_signals: pubSignals,
             proof: actualProof,
         };
+    }
+
+    /**
+     * Generates an UltraHonk proof (see RnNoirModule.kt's proveHonk for the native side - the
+     * same already-vendored native module `provePlonk` uses, just a different `proofType`).
+     *
+     * Deliberately does NOT slice the raw output into {proof, pub_signals} the way `prove()`
+     * does for Plonk: that slicing assumes public signals are serialized as a fixed-width
+     * (pub_signals_count * 64 hex chars) prefix before the proof bytes, a Plonk-specific
+     * convention from this binding - whether Honk's raw output uses the SAME framing has not
+     * been empirically confirmed (no device/simulator available to test this session). Returning
+     * the raw proof string avoids guessing at a slicing convention that might be wrong. This is
+     * also the right shape for how this fusion's Honk circuits (withdraw_identity, title_holder)
+     * actually consume proofs anyway - the caller already knows its own public inputs (it built
+     * them as circuit inputs before proving), so it doesn't need them re-extracted from the
+     * proof output at all.
+     */
+    async proveHonk(inputs: string, byteCodeString: string): Promise<string> {
+        const trustedSetupUri = await NoirCircuitParams.getTrustedSetupUri();
+
+        if (!trustedSetupUri) {
+            throw new Error('Trusted setup not found. Please download it first.');
+        }
+
+        const proof: string = await NoirModule.proveHonk(
+            trustedSetupUri,
+            inputs,
+            byteCodeString,
+        );
+
+        if (!proof) {
+            throw new Error(`Failed to generate Honk proof for noir circuit ${this.name}`);
+        }
+
+        return proof;
     }
 }
 
