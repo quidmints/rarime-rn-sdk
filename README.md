@@ -440,3 +440,41 @@ We encourage open collaboration — discussions, suggestions, and feedback are a
 Join us in improving the React Native and JavaScript/TypeScript ecosystem around the Rarimo protocol.
 
 **Telegram:** [Join Rarimo Community](https://t.me/+pWugh5xgDiE3Y2Jk)
+
+
+## Fork provenance and the dependency-bump incident
+
+This fork was vendored from `rarimo/rarime-rn-sdk` at **v0.3.1**, which is still upstream's latest
+tag — `upstream/main` is identical to it, and our baseline differed from upstream by a single added
+comment block. **We were not behind.**
+
+Eight defects were then found and fixed here (2026-07-27). Their origin matters, because it changes
+what to learn from them:
+
+**Introduced by our own commit `82f43d9` "bump all deps to latest":**
+- `@noble/hashes` ^1.8.0 → ^2.2.0 — v2 removed the `./sha1`, `./sha256`, `./sha512` subpaths the
+  code imported.
+- `expo-file-system` ~18.0.4 → ~57.0.1 — 57 removed the `documentDirectory`/`getInfoAsync`/
+  `createDownloadResumable` API the code used.
+- `typescript` ^5.9.3 → ^7.0.2 — violates `@li0ard/tsemrtd`'s peer `^5`, so `npm install` failed
+  with ERESOLVE and NOTHING downstream could build.
+
+One commit, three simultaneous major bumps, no clean install and no build afterwards. The package
+worked before it.
+
+**Pre-existing upstream, but invisible until the build was fixed:**
+- `1 << v` int32 truncation in `Freedomtool.ts` (option 32 encodes as option 0).
+- `buffer` imported but declared in no dependency section.
+- 9 unchecked-index defects on parsed passport/contract data.
+- `prepare` was `expo-module prepare`, a documented **no-op** — so `build/` was never produced even
+  though `main`/`types` pointed into it.
+- The build emitted ESM while `package.json` declared no `"type"`, leaving the package neither
+  `require()`-able nor `import()`-able.
+
+**Why so many hid for so long:** the last two are the reason. `prepare` never built, so the 9 type
+errors never surfaced; Metro resolves loosely enough that the module-format mismatch never bit in an
+app; and no one ran a clean `npm install`, so the ERESOLVE stayed invisible. A package can look
+healthy indefinitely when nothing ever actually builds or installs it from scratch.
+
+**Before bumping dependencies here:** run `npm install` from a fresh clone and `npx expo-module
+build`, and check that `require('./build/index.js')` resolves. All three now pass.
