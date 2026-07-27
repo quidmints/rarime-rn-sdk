@@ -8,6 +8,10 @@ import { CertificateSet } from "@peculiar/asn1-cms";
 import { type ProposalInfo } from "./types";
 import { MRZ_ZERO_DATE } from "./Freedomtool";
 
+/** ICAO 9303 MRZ lengths, all lines concatenated - what DG1.load returns. */
+const TD1_MRZ_LENGTH = 90; // 3 x 30, ID cards
+const TD3_MRZ_LENGTH = 88; // 2 x 44, passports
+
 export interface MRZData {
   documentType: string;
   issuingCountry: string;
@@ -160,43 +164,86 @@ export class RarimePassport {
     return signature;
   }
 
+  /**
+   * Parse DG1's MRZ.
+   *
+   * DISPATCHES ON LENGTH. This previously applied TD1 (ID card) offsets unconditionally with no
+   * length check, so a TD3 PASSPORT - the primary document this SDK exists for - silently produced
+   * a wrong document number, birth date, expiry and name. No error and no warning: the identity
+   * commitment would simply be built from the wrong fields.
+   *
+   * `DG1.load` returns the RAW MRZ ASCII straight out of the DG1 TLV (it does no normalising or
+   * reordering), so these are the ICAO 9303 layouts as printed on the document:
+   *   TD1, ID cards   3 lines x 30 = 90 chars
+   *   TD3, passports  2 lines x 44 = 88 chars
+   * Anything else is rejected rather than guessed at.
+   *
+   * Both branches are verified against the ICAO 9303 published specimens.
+   */
   public getMRZData(): MRZData {
     const mrz = DG1.load(this.dataGroup1);
-    /**
-     * Example of MRZ String
-     *
-     * IDUTO<<<<<<<<<<<<<<<<<<<<<<<<<<
-     * 1234567897UTO9001019M3001018<<
-     * JOHN<<DOE<<<<<<<<<<<<<<<<<<<
-     *
-     */
-    const documentType = mrz.slice(0, 2);
-    const issuingCountry = mrz.slice(2, 5);
-    const documentNumber = mrz.slice(5, 14);
 
-    const birthDate = mrz.slice(30, 36);
+    if (mrz.length === TD1_MRZ_LENGTH) return RarimePassport.parseTd1(mrz);
+    if (mrz.length === TD3_MRZ_LENGTH) return RarimePassport.parseTd3(mrz);
 
-    const sexChar = mrz.charAt(37);
+    throw new Error(
+      `Unrecognised MRZ length ${mrz.length}: expected ${TD1_MRZ_LENGTH} (TD1, ID card) ` +
+        `or ${TD3_MRZ_LENGTH} (TD3, passport)`,
+    );
+  }
 
-    const sex = sexChar;
-
-    const expiryDate = mrz.slice(38, 44);
-
+  /**
+   * TD1 - 3 lines of 30, concatenated. Offsets unchanged from the original implementation, which
+   * was CORRECT; only the worked example in its comment was wrong, and that is what made the
+   * defect hard to see. Verified against the ICAO specimen:
+   *
+   *   I<UTOD231458907<<<<<<<<<<<<<<<
+   *   7408122F1204159UTO<<<<<<<<<<<6
+   *   ERIKSSON<<ANNA<MARIA<<<<<<<<<<
+   *
+   * -> D23145890 / 740812 / F / 120415 / ERIKSSON, ANNA MARIA
+   */
+  private static parseTd1(mrz: string): MRZData {
     const namesPart = mrz.slice(60);
     // split by '<<' like in Rust .split("<<")
     const [firstName = "", lastName = ""] = namesPart.split("<<");
 
-    const result: MRZData = {
-      documentType,
-      issuingCountry,
-      documentNumber,
-      birthDate,
-      sex,
-      expiryDate,
+    return {
+      documentType: mrz.slice(0, 2),
+      issuingCountry: mrz.slice(2, 5),
+      documentNumber: mrz.slice(5, 14),
+      birthDate: mrz.slice(30, 36),
+      sex: mrz.charAt(37),
+      expiryDate: mrz.slice(38, 44),
       lastName: firstName,
       firstName: lastName,
     };
-    return result;
+  }
+
+  /**
+   * TD3 - 2 lines of 44, concatenated. The NAME is on line 1 and the number/dates on line 2, the
+   * exact inverse of TD1 - which is why running a passport through the TD1 offsets yielded
+   * plausible-looking nonsense instead of an obvious failure. Verified against the ICAO specimen:
+   *
+   *   P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<
+   *   L898902C36UTO7408122F1204159ZE184226B<<<<<10
+   *
+   * -> L898902C3 / 740812 / F / 120415 / ERIKSSON, ANNA MARIA
+   */
+  private static parseTd3(mrz: string): MRZData {
+    const namesPart = mrz.slice(5, 44);
+    const [firstName = "", lastName = ""] = namesPart.split("<<");
+
+    return {
+      documentType: mrz.slice(0, 2),
+      issuingCountry: mrz.slice(2, 5),
+      documentNumber: mrz.slice(44, 53),
+      birthDate: mrz.slice(57, 63),
+      sex: mrz.charAt(64),
+      expiryDate: mrz.slice(65, 71),
+      lastName: firstName,
+      firstName: lastName,
+    };
   }
 
   public getCertificate(): CertificateSet {
