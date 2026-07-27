@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import {Directory, File, Paths} from 'expo-file-system';
 import {default as NoirModule} from './src/NoirModule';
 
 export type NoirZKProof = {
@@ -7,13 +7,31 @@ export type NoirZKProof = {
 };
 
 export class NoirCircuitParams {
-    // Shared by both provePlonk and proveHonk (proveHonk calls the same getTrustedSetupUri()
-    // below) - Barretenberg's structured reference string is a universal, curve-level KZG setup
-    // shared across its proof systems, not Plonk-specific, so this should be correct for Honk
-    // too. Not empirically confirmed (no device/simulator available to test proving this
-    // session) - if Honk proving fails against this file, a separate Honk-specific SRS download
-    // is the first thing to check.
-    public static readonly TrustedSetupFileName = `${FileSystem.documentDirectory}/noir/ultraPlonkTrustedSetup.dat`;
+    // expo-file-system 57's File/Directory API REPLACED the old string-path API
+    // (documentDirectory / getInfoAsync / createDownloadResumable / readAsStringAsync /
+    // makeDirectoryAsync) entirely - those exports do not exist in 57. package.json has declared
+    // `expo-file-system: ~57.0.1` since the dependency bump, so the previous string-path
+    // implementation in this file could not run against its own declared dependency: any consumer
+    // on 57 hit `undefined is not a function` the first time it touched the trusted setup.
+    // Migrated 2026-07-27 from the downstream copy in quidmints/ibiza's identity-wallet, which had
+    // already done this work.
+    //
+    // The migration also removes a latent path bug the string-building carried: TrustedSetupFileName
+    // was `${documentDirectory}/noir/...` while downloadTrustedSetup wrote to
+    // `${documentDirectory}noir` - documentDirectory already ends in a slash, so the reader and the
+    // writer were not guaranteed to agree on a path. `new File(directory, name)` cannot express
+    // that mismatch.
+    //
+    // `exists` / `create` are synchronous properties/methods on File/Directory instances, not async
+    // calls. getTrustedSetupUri/getByteCodeUri stay `async` so existing call sites keep working.
+    static readonly NoirDir = new Directory(Paths.document, 'noir');
+
+    // Shared by BOTH provePlonk and proveHonk (proveHonk calls the same getTrustedSetupUri()).
+    // Barretenberg's structured reference string is a universal, curve-level KZG setup shared
+    // across its proof systems rather than Plonk-specific, so this should be correct for Honk too
+    // despite the filename. Not empirically confirmed - if Honk proving fails against this file, a
+    // Honk-specific SRS download is the first thing to check.
+    static readonly TrustedSetupFile = new File(NoirCircuitParams.NoirDir, 'ultraPlonkTrustedSetup.dat');
 
     constructor(
         public name: string,
@@ -33,49 +51,28 @@ export class NoirCircuitParams {
     }
 
     static async getTrustedSetupUri() {
-        const fileInfo = await FileSystem.getInfoAsync(
-            NoirCircuitParams.TrustedSetupFileName,
-        );
-
-        if (!fileInfo.exists) {
+        if (!NoirCircuitParams.TrustedSetupFile.exists) {
             return null;
         }
 
-        return fileInfo.uri;
+        return NoirCircuitParams.TrustedSetupFile.uri;
     }
 
     static async downloadTrustedSetup(opts?: {
-        onDownloadingProgress?: (p: FileSystem.DownloadProgressData) => void;
+        onDownloadingProgress?: (p: {bytesWritten: number; totalBytes: number}) => void;
     }) {
-        const dir = `${FileSystem.documentDirectory}noir`;
-
-        // Ensure that the folder exists
-        const dirInfo = await FileSystem.getInfoAsync(dir);
-        if (!dirInfo.exists) {
-            await FileSystem.makeDirectoryAsync(dir, {intermediates: true});
+        if (!NoirCircuitParams.NoirDir.exists) {
+            NoirCircuitParams.NoirDir.create({intermediates: true});
         }
 
-        // Preparing path
-        const fileUri = `${dir}/ultraPlonkTrustedSetup.dat`;
         const url =
             'https://storage.googleapis.com/rarimo-store/trusted-setups/ultraPlonkTrustedSetup.dat';
 
-        // Continue downloading
-        const downloadResumable = FileSystem.createDownloadResumable(
-            url,
-            fileUri,
-            {},
-            (progress) => {
-                // DEBUG DOWNLOADING
-                // console.log(
-                //   `Progress: ${((progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100).toFixed(1)}%`,
-                // )
-                opts?.onDownloadingProgress?.(progress);
-            },
-        );
-
         if (!(await NoirCircuitParams.getTrustedSetupUri())) {
-            await downloadResumable.downloadAsync();
+            const task = File.createDownloadTask(url, NoirCircuitParams.TrustedSetupFile, {
+                onProgress: opts?.onDownloadingProgress,
+            });
+            await task.downloadAsync();
         }
 
         const uri = await NoirCircuitParams.getTrustedSetupUri();
@@ -106,36 +103,31 @@ export class NoirCircuitParams {
         })
     }
 
-    static async getByteCodeUri(filename: string) {
-        const fileInfo = await FileSystem.getInfoAsync(filename);
-
-        if (!fileInfo.exists) {
+    static async getByteCodeUri(file: File) {
+        if (!file.exists) {
             return null;
         }
 
-        return fileInfo.uri;
+        return file.uri;
     }
 
     async downloadByteCode(opts?: {
-        onDownloadingProgress?: (
-            downloadProgress: FileSystem.DownloadProgressData,
-        ) => void;
+        onDownloadingProgress?: (p: {bytesWritten: number; totalBytes: number}) => void;
     }): Promise<string> {
-        const fileName = `${FileSystem.documentDirectory}/noir/${this.name}-bytecode.json`;
-        const downloadResumable = FileSystem.createDownloadResumable(
-            this.byteCodeUri,
-            fileName,
-            {},
-            (downloadProgress) => {
-                opts?.onDownloadingProgress?.(downloadProgress);
-            },
-        );
-
-        if (!(await NoirCircuitParams.getByteCodeUri(fileName))) {
-            await downloadResumable.downloadAsync();
+        if (!NoirCircuitParams.NoirDir.exists) {
+            NoirCircuitParams.NoirDir.create({intermediates: true});
         }
 
-        const uri = await NoirCircuitParams.getByteCodeUri(fileName);
+        const file = new File(NoirCircuitParams.NoirDir, `${this.name}-bytecode.json`);
+
+        if (!(await NoirCircuitParams.getByteCodeUri(file))) {
+            const task = File.createDownloadTask(this.byteCodeUri, file, {
+                onProgress: opts?.onDownloadingProgress,
+            });
+            await task.downloadAsync();
+        }
+
+        const uri = await NoirCircuitParams.getByteCodeUri(file);
 
         if (!uri) {
             throw new Error(
@@ -143,7 +135,7 @@ export class NoirCircuitParams {
             );
         }
 
-        const byteCode = await FileSystem.readAsStringAsync(uri);
+        const byteCode = await file.text();
 
         if (!byteCode) {
             throw new Error(`Failed to read bytecode for noir circuit ${this.name}`);
@@ -189,19 +181,21 @@ export class NoirCircuitParams {
     }
 
     /**
-     * Generates an UltraHonk proof (see RnNoirModule.kt's proveHonk for the native side - the
-     * same already-vendored native module `provePlonk` uses, just a different `proofType`).
+     * Generates an UltraHonk proof (see RnNoirModule.kt's proveHonk for the native side - the same
+     * already-vendored native module `provePlonk` uses, just a different `proofType`).
      *
-     * Deliberately does NOT slice the raw output into {proof, pub_signals} the way `prove()`
-     * does for Plonk: that slicing assumes public signals are serialized as a fixed-width
-     * (pub_signals_count * 64 hex chars) prefix before the proof bytes, a Plonk-specific
-     * convention from this binding - whether Honk's raw output uses the SAME framing has not
-     * been empirically confirmed (no device/simulator available to test this session). Returning
-     * the raw proof string avoids guessing at a slicing convention that might be wrong. This is
-     * also the right shape for how this fusion's Honk circuits (withdraw_identity, title_holder)
-     * actually consume proofs anyway - the caller already knows its own public inputs (it built
-     * them as circuit inputs before proving), so it doesn't need them re-extracted from the
-     * proof output at all.
+     * ANDROID ONLY. android/.../RnNoirModule.kt implements AsyncFunction("proveHonk"), but
+     * ios/RnNoirModule.swift exposes only provePlonk and hardcodes proof_type: "plonk", so on iOS
+     * this rejects with an unknown-native-function error. Exposing Swoirenberg's Honk entry point
+     * on the Swift side is what would lift that.
+     *
+     * Deliberately does NOT slice the raw output into {proof, pub_signals} the way `prove()` does
+     * for Plonk: that slicing assumes public signals are serialized as a fixed-width
+     * (pub_signals_count * 64 hex chars) prefix before the proof bytes, a Plonk-specific convention
+     * of this binding, and whether Honk's raw output uses the SAME framing has not been empirically
+     * confirmed. Returning the raw proof avoids guessing at a slicing convention that may be wrong;
+     * the caller already knows its own public inputs, having built them as circuit inputs before
+     * proving.
      */
     async proveHonk(inputs: string, byteCodeString: string): Promise<string> {
         const trustedSetupUri = await NoirCircuitParams.getTrustedSetupUri();
