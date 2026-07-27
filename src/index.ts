@@ -14,3 +14,8 @@ export * from "./helpers/SignatureAlgorithm";
 export * from "./helpers/contracts";
 export * from "./utils";
 export * from "./types/contracts";
+
+// `export *` does not carry an ambient `declare namespace`, and SparseMerkleTree is one (it is the
+// qualifier for SparseMerkleTree.ProofStruct / .NodeStructOutput, which any caller of
+// PoseidonSMT's proof methods needs). Re-export it explicitly.
+export type { SparseMerkleTree } from "./types/contracts/PoseidonSMT";
