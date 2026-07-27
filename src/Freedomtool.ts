@@ -233,7 +233,11 @@ export class FreedomTool {
   private getEventData(votes: number[]): string {
     // 2) ABI‑encode as an array of (uint256,uint256) structs
     const abiCoder = AbiCoder.defaultAbiCoder();
-    const encoded = abiCoder.encode(["uint256[]"], [votes.map((v) => 1 << v)]);
+    // BigInt shift, NOT `1 << v`. JS number bitwise coerces to INT32, so option 31 produces a
+    // NEGATIVE mask and option 32 silently wraps to 1 - i.e. a vote for option 32 would be encoded
+    // as a vote for option 0, with no error anywhere. Every other bitmask in this codebase already
+    // uses BigInt; these two sites were the exceptions.
+    const encoded = abiCoder.encode(["uint256[]"], [votes.map((v) => 1n << BigInt(v))]);
 
     // 3) Take keccak256 hash
     const hashHex = keccak256(encoded);
@@ -329,7 +333,9 @@ export class FreedomTool {
       [
         proposalInfo.id,
         // votes mask
-        answers.map((v) => 1 << Number(v)),
+        // BigInt shift - see getEventData: `1 << v` truncates to int32 and silently mis-encodes
+        // any option index >= 31.
+        answers.map((v) => 1n << BigInt(v)),
         // User payload: (nullifier, citizenship, identity_creation_timestamp)
         [
           "0x" + queryProof.pub_signals[0],

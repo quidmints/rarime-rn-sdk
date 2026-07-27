@@ -1,4 +1,5 @@
 import {Directory, File, Paths} from 'expo-file-system';
+import {Asset} from 'expo-asset';
 import {default as NoirModule} from './src/NoirModule';
 
 export type NoirZKProof = {
@@ -37,6 +38,13 @@ export class NoirCircuitParams {
         public name: string,
         public byteCodeUri: string,
         public pub_signals_count: number,
+        /**
+         * Metro asset module id for a circuit BUNDLED WITH THE CONSUMING APP (require() of a file
+         * registered in metro.config.js's `assetExts`). Set this for circuits that are not
+         * published anywhere, so there is no URI to fetch. When present, loadByteCode() reads the
+         * bundled asset and never touches the network.
+         */
+        public bundledAsset?: number,
     ) {
     }
 
@@ -109,6 +117,45 @@ export class NoirCircuitParams {
         }
 
         return file.uri;
+    }
+
+    /**
+     * Get this circuit's ACIR bytecode: from the app bundle when it is bundled, over the network
+     * otherwise. Prefer this over calling downloadByteCode directly - it is the only path that
+     * works for both hosted and bundled circuits.
+     *
+     * Bundled circuits never hit the network, so proving works offline and cannot be affected by
+     * the availability or contents of a remote host. That matters more than convenience here: the
+     * bytecode determines WHAT IS BEING PROVEN, so fetching it from a mutable remote URL puts
+     * whoever controls that URL inside the trust boundary of every proof.
+     */
+    async loadByteCode(opts?: {
+        onDownloadingProgress?: (p: {bytesWritten: number; totalBytes: number}) => void;
+    }): Promise<string> {
+        if (this.bundledAsset === undefined) {
+            return this.downloadByteCode(opts);
+        }
+
+        const asset = Asset.fromModule(this.bundledAsset);
+
+        // On Android a bundled asset lives inside the APK and has no filesystem path until it is
+        // unpacked; downloadAsync() is what populates localUri. It is a no-op once cached and,
+        // despite the name, uses no network for a bundled asset.
+        if (!asset.localUri) {
+            await asset.downloadAsync();
+        }
+
+        const uri = asset.localUri ?? asset.uri;
+        if (!uri) {
+            throw new Error(`Bundled circuit ${this.name} has no resolvable URI`);
+        }
+
+        const byteCode = await new File(uri).text();
+        if (!byteCode) {
+            throw new Error(`Failed to read bundled bytecode for noir circuit ${this.name}`);
+        }
+
+        return byteCode;
     }
 
     async downloadByteCode(opts?: {
@@ -250,5 +297,27 @@ const supportedNoirCircuits: NoirCircuitParams[] = [
         3,
     ),
 ]
+
+/**
+ * Register a circuit this SDK does not ship, or override one it does.
+ *
+ * `supportedNoirCircuits` is module-private, so without this a consumer with its own circuits had
+ * no choice but to VENDOR A COPY of this whole file and edit the array - which is exactly how
+ * quidmints/ibiza ended up with a duplicate that then drifted (it was the only copy with the
+ * expo-file-system 57 migration for a while, while this one could not run against its own declared
+ * dependency). Registering is the supported path; copying is not.
+ *
+ * Re-registering an existing name REPLACES it, so a consumer can point a circuit at its own
+ * bundled asset without forking.
+ */
+export function registerNoirCircuit(params: NoirCircuitParams): void {
+    const existing = supportedNoirCircuits.findIndex((c) => c.name === params.name);
+
+    if (existing >= 0) {
+        supportedNoirCircuits[existing] = params;
+    } else {
+        supportedNoirCircuits.push(params);
+    }
+}
 
 export default NoirModule;
