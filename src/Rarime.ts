@@ -2,19 +2,19 @@ import { hexlify, JsonRpcProvider, toUtf8Bytes } from "ethers";
 import { DocumentStatus, RarimePassport } from "./RarimePassport";
 import {
   PoseidonSMT__factory,
-  RegistrationSimple,
-  StateKeeper,
+  type RegistrationSimple,
+  type StateKeeper,
   StateKeeper__factory,
 } from "./types/contracts";
-import { NoirCircuitParams, NoirZKProof } from "./RnNoirModule";
+import { NoirCircuitParams, type NoirZKProof } from "./RnNoirModule";
 import { Platform } from "react-native";
 import { HashAlgorithm } from "./helpers/HashAlgorithm";
 import { createRegistrationSimpleContract } from "./helpers/contracts";
 import { RarimeUtils } from "./RarimeUtils";
 import { SignatureAlgorithm } from "./helpers/SignatureAlgorithm";
 import { toPaddedHex32, wrapPem } from "./utils";
-import { QueryProofParams } from "./types";
-import { SparseMerkleTree } from "./types/contracts/PoseidonSMT";
+import { type QueryProofParams } from "./types";
+import { type SparseMerkleTree } from "./types/contracts/PoseidonSMT";
 import { Poseidon } from "@iden3/js-crypto";
 import { Time } from "@distributedlab/tools";
 
@@ -268,9 +268,18 @@ export class Rarime {
       new JsonRpcProvider(this.config.apiConfiguration.jsonRpcEvmUrl)
     );
 
+    // The circuit pins these two signals; a proof missing them is not one we can build a
+    // passport struct from, and Buffer.from(undefined) would throw a type error far from here.
+    const [dgCommitSignal, dg1HashSignal] = proof.pub_signals;
+    if (dgCommitSignal === undefined || dg1HashSignal === undefined) {
+      throw new Error(
+        `Register proof is missing public signals (got ${proof.pub_signals.length}, need >= 2)`
+      );
+    }
+
     const passportStruct: RegistrationSimple.PassportStruct = {
-      dgCommit: BigInt("0x" + proof.pub_signals[0]),
-      dg1Hash: Buffer.from(proof.pub_signals[1], "hex"),
+      dgCommit: BigInt("0x" + dgCommitSignal),
+      dg1Hash: Buffer.from(dg1HashSignal, "hex"),
       publicKey: verifySodResponseParsed.data.attributes.public_key,
       passportHash: toPaddedHex32(passport.getPassportHash()),
       verifier: verifySodResponseParsed.data.attributes.verifier,

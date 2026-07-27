@@ -9,18 +9,18 @@ import {
 import {
   IDCardVoting__factory,
   PoseidonSMT__factory,
-  ProposalsState,
+  type ProposalsState,
   ProposalsState__factory,
-  QueryProofParams,
-  StateKeeper,
+  type QueryProofParams,
+  type StateKeeper,
 } from "./types";
-import { ProposalInfo, ProposalQuestion } from "./types/proposal";
-import { BaseVoting } from "./types/contracts/IDCardVoting";
+import { type ProposalInfo, type ProposalQuestion } from "./types/proposal";
+import { type BaseVoting } from "./types/contracts/IDCardVoting";
 import { Rarime } from "./Rarime";
 import { RarimePassport } from "./RarimePassport";
 import { Time } from "@distributedlab/tools";
 import { createIDCardVotingContract } from "./helpers/contracts";
-import { NoirZKProof } from "./RnNoirModule";
+import { type NoirZKProof } from "./RnNoirModule";
 
 const ROOT_VALIDITY = 3600n;
 const UINT32_MAX = 2n ** 32n - 1n;
@@ -69,9 +69,17 @@ export class FreedomTool {
 
     const ipfsData = await this.getProposalMetadata(contractData[2][4]);
 
+    // votingWhitelist[0] is the voting contract for this proposal. A proposal with an EMPTY
+    // whitelist has no voting contract at all, so there is nothing to fetch rules from or to
+    // send a vote to - fail with that, rather than passing undefined down two call sites.
+    const sendVoteContractAddress = contractData[2][5][0];
+    if (sendVoteContractAddress === undefined) {
+      throw new Error(`Proposal ${proposalId} has an empty voting whitelist`);
+    }
+
     const proposalCriteria = await this.getProposalRules(
       proposalId,
-      contractData[2][5][0]
+      sendVoteContractAddress
     );
 
     const proposalInfo: ProposalInfo = {
@@ -91,7 +99,7 @@ export class FreedomTool {
       startTimestamp: contractData[2][0],
       duration: contractData[2][1],
       imageCID: ipfsData.imageCid ?? "",
-      sendVoteContractAddress: contractData[2][5][0],
+      sendVoteContractAddress,
       title: ipfsData.title,
       questions: ipfsData.acceptedOptions,
       votingResults: contractData[3],

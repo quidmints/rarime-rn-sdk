@@ -5,7 +5,7 @@ import { HashAlgorithm } from "./helpers/HashAlgorithm";
 import { Sod } from "./utils";
 import { DG1, DG15, SOD } from "@li0ard/tsemrtd";
 import { CertificateSet } from "@peculiar/asn1-cms";
-import { ProposalInfo } from "./types";
+import { type ProposalInfo } from "./types";
 import { MRZ_ZERO_DATE } from "./Freedomtool";
 
 export interface MRZData {
@@ -85,10 +85,17 @@ export class RarimePassport {
     let acc = 0n;
     let accBits = 0;
 
+    // Bits 0..251 are read, so byteIndex reaches 31 - the loop REQUIRES at least 32 bytes.
+    // Asserting once here is what makes every hashBytes[byteIndex] below in-bounds by
+    // construction, rather than silently reading undefined off the end of a short hash.
+    if (hashBytes.length < 32) {
+      throw new Error(`Expected a >=32-byte hash, got ${hashBytes.length}`);
+    }
+
     for (let i = 251; i >= 0; i--) {
       const byteIndex = Math.floor(i / 8);
       const bitIndex = 7 - (i % 8);
-      const bit = (BigInt(hashBytes[byteIndex]) >> BigInt(bitIndex)) & 1n;
+      const bit = (BigInt(hashBytes[byteIndex]!) >> BigInt(bitIndex)) & 1n;
 
       // acc = (acc << 1) | bit
       acc = (acc << 1n) | bit;
@@ -125,8 +132,12 @@ export class RarimePassport {
     const buffer = Buffer.from(this.sod);
     const sod = SOD.load(buffer);
 
-    const signatureAlgorithmOID =
-      sod.signatures[0].signatureAlgorithm.algorithm;
+    const firstSignature = sod.signatures[0];
+    if (!firstSignature) {
+      throw new Error('SOD contains no signatures');
+    }
+
+    const signatureAlgorithmOID = firstSignature.signatureAlgorithm.algorithm;
 
     if (!signatureAlgorithmOID.startsWith("1.2.840.")) {
       throw new Error("Signature algorithm OID does not start with 1.2.840.");

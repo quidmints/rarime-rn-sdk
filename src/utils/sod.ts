@@ -193,6 +193,11 @@ export class Sod {
   /** Works */
   get signedAttributes(): Uint8Array {
     const signerInfo = this.signedData.signerInfos[0];
+    // A SOD with no SignerInfo is malformed. Without this guard the accesses below throw
+    // "Cannot read properties of undefined", which says nothing about the real cause.
+    if (!signerInfo) {
+      throw new TypeError('No SignerInfo found in SignedData');
+    }
 
     if (!signerInfo.signedAttrs?.length) {
       throw new TypeError('No signed attributes found in SignerInfo');
@@ -210,6 +215,11 @@ export class Sod {
   /** TODO: mb remove */
   get signature(): Uint8Array {
     const signerInfo = this.signedData.signerInfos[0];
+    // A SOD with no SignerInfo is malformed. Without this guard the accesses below throw
+    // "Cannot read properties of undefined", which says nothing about the real cause.
+    if (!signerInfo) {
+      throw new TypeError('No SignerInfo found in SignedData');
+    }
 
     if (!signerInfo.signature) {
       throw new TypeError('No signature found in SignerInfo');

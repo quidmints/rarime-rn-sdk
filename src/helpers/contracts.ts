@@ -1,4 +1,4 @@
-import { Provider, Signer } from "ethers";
+import { type Provider, type Signer } from "ethers";
 import {
   IDCardVoting__factory,
   RegistrationSimple__factory,
